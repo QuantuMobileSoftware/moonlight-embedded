@@ -28,11 +28,24 @@
 #include <unistd.h>
 #include <stdbool.h>
 
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <arpa/inet.h>
+
 #define DECODER_BUFFER_SIZE 92*1024
 
 static char* ffmpeg_buffer;
 
+static int h264streamfd = 0;
+
 static int sdl_setup(int videoFormat, int width, int height, int redrawRate, void* context, int drFlags) {
+  char * h264stream = "/tmp/stream.h264";
+  h264streamfd = open(h264stream, O_WRONLY);
+  if (h264streamfd == -1) {
+    fprintf(stderr, "Couldn't open FIFO\n");
+    return -1;
+  }
+
   int avc_flags = SLICE_THREADING;
 
   if (ffmpeg_init(videoFormat, width, height, avc_flags, SDL_BUFFER_FRAMES, sysconf(_SC_NPROCESSORS_ONLN)) < 0) {
@@ -52,6 +65,10 @@ static int sdl_setup(int videoFormat, int width, int height, int redrawRate, voi
 
 static void sdl_cleanup() {
   ffmpeg_destroy();
+  if (h264streamfd != 0) {
+    close(h264streamfd);
+    h264streamfd = 0;
+  }
 }
 
 static int sdl_submit_decode_unit(PDECODE_UNIT decodeUnit) {
@@ -63,6 +80,19 @@ static int sdl_submit_decode_unit(PDECODE_UNIT decodeUnit) {
       length += entry->length;
       entry = entry->next;
     }
+
+    if (h264streamfd != 0) {
+        ssize_t left = length;
+        while (left > 0) {
+          ssize_t written = write(h264streamfd, ffmpeg_buffer + (length - left), left);
+          if (written == -1) {
+            fprintf(stderr, "Couldn't write to FIFO\n");
+            break;
+          }
+          left -= written;
+        }
+    }
+    
     ffmpeg_decode(ffmpeg_buffer, length);
 
     if (SDL_LockMutex(mutex) == 0) {
