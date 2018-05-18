@@ -53,6 +53,8 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <openssl/rand.h>
+#include <fcntl.h>
+#include <poll.h>
 
 static void applist(PSERVER_DATA server) {
   PAPP_LIST list = NULL;
@@ -81,6 +83,32 @@ static int get_app_id(PSERVER_DATA server, const char *name) {
     list = list->next;
   }
   return -1;
+}
+
+static int input_handle(int fd) {
+  char inputBuffer[5];
+  int res = read(fd, inputBuffer, sizeof(inputBuffer));
+  // TODO(adolgarev): res is not always 5 bytes
+  uint8_t type = inputBuffer[0];
+  if (type == 0) {
+    short deltaX = ntohs(*(uint16_t*)(inputBuffer + 1));
+    short deltaY = ntohs(*(uint16_t*)(inputBuffer + 3));
+    res = LiSendMouseMoveEvent(deltaX, deltaY);
+  } else if (type == 1) {
+    char action = inputBuffer[1];
+    int button = inputBuffer[2];
+    res = LiSendMouseButtonEvent(action, button);
+  } else if (type == 2) {
+    short keyCode = ntohs(*(uint16_t*)(inputBuffer + 1));
+    char keyAction = inputBuffer[3];
+    char modifiers = inputBuffer[4];
+    res = LiSendKeyboardEvent(keyCode, keyAction, modifiers);
+  } else if (type == 3) {
+    signed char scrollClicks = inputBuffer[1];
+    res = LiSendScrollEvent(scrollClicks);
+  }
+  fprintf(stderr, "INPUT EVENT RECEIVED!!!!! %d %d\n", type, res);
+  return LOOP_OK;
 }
 
 static void stream(PSERVER_DATA server, PCONFIGURATION config, enum platform system) {
@@ -124,10 +152,23 @@ static void stream(PSERVER_DATA server, PCONFIGURATION config, enum platform sys
   platform_start(system);
   LiStartConnection(&server->serverInfo, &config->stream, &connection_callbacks, platform_get_video(system), platform_get_audio(system, config->audio_device), NULL, drFlags, config->audio_device, 0);
 
-  if (IS_EMBEDDED(system)) {
-//    evdev_start();
+  if (getenv("INPUT_STREAM") != NULL) {
+    char* inputstream = getenv("INPUT_STREAM");
+    int inputstreamfd = open(inputstream, O_RDONLY);
+    if (inputstreamfd == -1) {
+        fprintf(stderr, "Couldn't open FIFO\n");
+        inputstreamfd = 0;
+    } else {
+        loop_add_fd(inputstreamfd, &input_handle, POLLIN);
+    }
     loop_main();
-//    evdev_stop();
+    if (inputstreamfd != 0) {
+        close(inputstreamfd);
+    }
+  } else if (IS_EMBEDDED(system)) {
+    evdev_start();
+    loop_main();
+    evdev_stop();
   }
   #ifdef HAVE_SDL
   else if (system == SDL)
@@ -277,7 +318,7 @@ int main(int argc, char* argv[]) {
     }
     config.stream.supportsHevc = config.codec != CODEC_H264 && (config.codec == CODEC_HEVC || platform_supports_hevc(system));
 
-    if (IS_EMBEDDED(system) && 0 /* disable input from devices */) {
+    if (IS_EMBEDDED(system) && getenv("INPUT_STREAM") == NULL) {
       char* mapping_env = getenv("SDL_GAMECONTROLLERCONFIG");
       if (config.mapping == NULL && mapping_env == NULL) {
         fprintf(stderr, "Please specify mapping file as default mapping could not be found.\n");
