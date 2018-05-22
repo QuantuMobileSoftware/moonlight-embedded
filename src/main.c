@@ -107,7 +107,7 @@ static int input_handle(int fd) {
     signed char scrollClicks = inputBuffer[1];
     res = LiSendScrollEvent(scrollClicks);
   }
-  fprintf(stderr, "INPUT EVENT RECEIVED!!!!! %d %d\n", type, res);
+  /*fprintf(stderr, "Input event received %d %d\n", type, res);*/
   return LOOP_OK;
 }
 
