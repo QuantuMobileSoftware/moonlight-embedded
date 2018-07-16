@@ -152,11 +152,10 @@ static void stream(PSERVER_DATA server, PCONFIGURATION config, enum platform sys
   platform_start(system);
   LiStartConnection(&server->serverInfo, &config->stream, &connection_callbacks, platform_get_video(system), platform_get_audio(system, config->audio_device), NULL, drFlags, config->audio_device, 0);
 
-  if (getenv("INPUT_STREAM") != NULL) {
-    char* inputstream = getenv("INPUT_STREAM");
-    int inputstreamfd = open(inputstream, O_RDONLY);
-    if (inputstreamfd == -1) {
-        fprintf(stderr, "Couldn't open FIFO\n");
+  if (getenv("INPUT_STREAM_FD") != NULL) {
+    int inputstreamfd = atoi(getenv("INPUT_STREAM_FD"));
+    if (inputstreamfd <= 2) {
+        fprintf(stderr, "Couldn't open INPUT_STREAM\n");
         inputstreamfd = 0;
     } else {
         loop_add_fd(inputstreamfd, &input_handle, POLLIN);
