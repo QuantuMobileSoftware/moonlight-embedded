@@ -317,7 +317,7 @@ int main(int argc, char* argv[]) {
     }
     config.stream.supportsHevc = config.codec != CODEC_H264 && (config.codec == CODEC_HEVC || platform_supports_hevc(system));
 
-    if (IS_EMBEDDED(system) && getenv("INPUT_STREAM") == NULL) {
+    if (IS_EMBEDDED(system) && getenv("INPUT_STREAM_FD") == NULL) {
       char* mapping_env = getenv("SDL_GAMECONTROLLERCONFIG");
       if (config.mapping == NULL && mapping_env == NULL) {
         fprintf(stderr, "Please specify mapping file as default mapping could not be found.\n");
